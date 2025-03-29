@@ -2,12 +2,14 @@ from typing import Any, Dict, Optional, Type
 
 from app.agent.base import BaseAgent
 from app.agent.manus import Manus
+from app.agent.swe import SWEAgent
 from app.agent.task_completion_agent import TaskCompletionAgent
 
 # Registry of available agent classes
 AGENT_REGISTRY: Dict[str, Type[BaseAgent]] = {
     "manus": Manus,
     "task_completion": TaskCompletionAgent,
+    "swe": SWEAgent,
 }
 
 

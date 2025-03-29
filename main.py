@@ -11,7 +11,7 @@ async def main():
     parser.add_argument(
         "--agent",
         type=str,
-        default="task_completion",
+        default="swe",
         choices=list(AGENT_REGISTRY.keys()),
         help="Type of agent to use"
     )
@@ -45,7 +45,6 @@ async def main():
             "completion_check_interval": args.check_interval,
             "completion_confidence_threshold": args.confidence
         })
-
     agent = create_agent(agent_type=args.agent, **agent_kwargs)
 
     try:
