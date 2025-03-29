@@ -4,6 +4,7 @@ from app.agent.base import BaseAgent
 from app.agent.manus import Manus
 from app.agent.swe import SWEAgent
 from app.agent.task_completion_agent import TaskCompletionAgent
+from app.workspace_manager import workspace_manager
 
 # Registry of available agent classes
 AGENT_REGISTRY: Dict[str, Type[BaseAgent]] = {
@@ -27,6 +28,10 @@ def create_agent(agent_type: str = "manus", **kwargs) -> BaseAgent:
     Raises:
         ValueError: If the specified agent_type is not found in the registry
     """
+    # Add workspace manager if not provided
+    if "workspace_manager" not in kwargs:
+        kwargs["workspace_manager"] = workspace_manager
+
     agent_class = AGENT_REGISTRY.get(agent_type)
     if not agent_class:
         raise ValueError(f"Unknown agent type: {agent_type}. Available types: {list(AGENT_REGISTRY.keys())}")

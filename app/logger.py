@@ -1,42 +1,65 @@
 import sys
 from datetime import datetime
+from typing import Optional
 
 from loguru import logger as _logger
 
-from app.config import PROJECT_ROOT
+
+# Remove all default handlers
+_logger.remove()
+
+# Add only console handler for default logger
+_logger.add(sys.stderr, level="INFO")
+
+# Export the console-only logger as the default
+logger = _logger
 
 
-_print_level = "INFO"
+def define_log_level(print_level="INFO", logfile_level="DEBUG", name: Optional[str] = None) -> _logger.__class__:
+    """
+    Configure a new logger with console and file output.
 
+    Args:
+        print_level: Log level for console output
+        logfile_level: Log level for file output
+        name: Logger name (used for log filename)
 
-def define_log_level(print_level="INFO", logfile_level="DEBUG", name: str = None):
-    """Adjust the log level to above level"""
-    global _print_level
-    _print_level = print_level
+    Returns:
+        Configured logger instance
+    """
+    # Import here to avoid circular imports
+    from app.workspace_manager import workspace_manager
 
-    current_date = datetime.now()
-    formatted_date = current_date.strftime("%Y%m%d%H%M%S")
-    log_name = (
-        f"{name}_{formatted_date}" if name else formatted_date
-    )  # name a log with prefix name
+    # Create a new logger instance
+    new_logger = _logger.bind()
 
-    _logger.remove()
-    _logger.add(sys.stderr, level=print_level)
-    _logger.add(PROJECT_ROOT / f"logs/{log_name}.log", level=logfile_level)
-    return _logger
+    # Remove any existing handlers
+    new_logger.remove()
 
+    # Add console handler
+    new_logger.add(sys.stderr, level=print_level)
 
-logger = define_log_level()
+    # Ensure a meaningful log name is always used
+    if name:
+        # Create logs directory in the workspace
+        log_path = workspace_manager.setup_logging(name)
+
+        # Add file handler
+        new_logger.add(str(log_path), level=logfile_level)
+
+    return new_logger
 
 
 if __name__ == "__main__":
-    logger.info("Starting application")
-    logger.debug("Debug message")
-    logger.warning("Warning message")
-    logger.error("Error message")
-    logger.critical("Critical message")
+    # Example usage
+    test_logger = define_log_level(name="test")
+    test_logger.info("Starting application")
+    test_logger.debug("Debug message")
+    test_logger.warning("Warning message")
+    test_logger.error("Error message")
+    test_logger.critical("Critical message")
 
     try:
         raise ValueError("Test error")
     except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+        test_logger.exception(f"An error occurred: {e}")

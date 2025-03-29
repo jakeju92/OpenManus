@@ -1,8 +1,9 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import Field
 
 from app.agent.toolcall import ToolCallAgent
+from app.logger import logger
 from app.prompt.swe import NEXT_STEP_TEMPLATE, SYSTEM_PROMPT
 from app.tool import Bash, GitTool, StrReplaceEditor, Terminate, ToolCollection
 
@@ -25,14 +26,35 @@ class SWEAgent(ToolCallAgent):
 
     bash: Bash = Field(default_factory=Bash)
     working_dir: str = "."
+    open_file: Optional[str] = None
 
     async def think(self) -> bool:
         """Process current state and decide next action"""
-        # Update working directory
+        # # Change to the workspace directory for all operations
+        # workspace_dir = str(self.workspace_path)
+
+        # # Check if the working directory is already in the workspace
+        # if not self.working_dir.startswith(workspace_dir):
+        #     # Use workspace directory for initial operations
+        #     change_dir_result = await self.bash.execute(f"cd {workspace_dir}")
+        #     if change_dir_result.success:
+        #         result = await self.bash.execute("pwd")
+        #         self.working_dir = result.output
+        #         logger.info(f"Changed working directory to workspace: {self.working_dir}")
+        #     else:
+        #         logger.error(f"Failed to change to workspace directory: {workspace_dir}")
+        # else:
+        #     # Get current directory
+        #     result = await self.bash.execute("pwd")
+        #     self.working_dir = result.output
         result = await self.bash.execute("pwd")
         self.working_dir = result.output
+
+        # Update prompt with current state
         self.next_step_prompt = self.next_step_prompt.format(
-            current_dir=self.working_dir
+            observation="",
+            open_file=self.open_file or "",
+            working_dir=self.working_dir
         )
 
         return await super().think()

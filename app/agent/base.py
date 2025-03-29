@@ -8,6 +8,7 @@ from app.llm import LLM
 from app.logger import logger
 from app.sandbox.client import SANDBOX_CLIENT
 from app.schema import ROLE_TYPE, AgentState, Memory, Message
+from app.workspace_manager import WorkspaceManager, workspace_manager
 
 
 class BaseAgent(BaseModel, ABC):
@@ -36,6 +37,9 @@ class BaseAgent(BaseModel, ABC):
         default=AgentState.IDLE, description="Current agent state"
     )
 
+    # Workspace management
+    workspace_manager: WorkspaceManager = Field(default=workspace_manager, description="Workspace manager")
+
     # Execution control
     max_steps: int = Field(default=10, description="Maximum steps before termination")
     current_step: int = Field(default=0, description="Current step in execution")
@@ -54,6 +58,15 @@ class BaseAgent(BaseModel, ABC):
         if not isinstance(self.memory, Memory):
             self.memory = Memory()
         return self
+
+    @property
+    def workspace_path(self):
+        """Get the current workspace path"""
+        return self.workspace_manager.current_workspace
+
+    def get_workspace_path(self, *path_segments):
+        """Get a path within the current workspace"""
+        return self.workspace_manager.get_path(*path_segments)
 
     @asynccontextmanager
     async def state_context(self, new_state: AgentState):

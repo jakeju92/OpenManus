@@ -3,19 +3,19 @@ from typing import List, Optional
 
 from pydantic import Field
 
-from app.agent.manus import Manus
+from app.agent.swe import SWEAgent
 from app.logger import logger
 from app.prompt.task_completion import (COMPLETION_CHECK_PROMPT,
                                         COMPLETION_SYSTEM_PROMPT)
 from app.schema import AgentState, Message
 
 
-class TaskCompletionAgent(Manus):
+class TaskCompletionAgent(SWEAgent):
     """
     An agent that dynamically determines when a task is complete, rather than
     running a fixed number of steps.
 
-    This agent extends Manus with a task completion checking mechanism that evaluates
+    This agent extends SWEAgent with a task completion checking mechanism that evaluates
     whether the objectives have been achieved based on the conversation history.
     """
 
@@ -102,22 +102,53 @@ class TaskCompletionAgent(Manus):
         # For git clone operations, check if target directory exists and contains code
         if is_git_clone:
             # Extract target directory from the request or use default
-            target_dir = "OpenManus"  # Default target directory
-            if "into" in original_request.lower():
-                target_dir = original_request.split("into")[-1].strip()
-            elif "to" in original_request.lower():
-                target_dir = original_request.split("to")[-1].strip()
+            repo_name = None
 
-            # Check if directory exists and contains code
-            if os.path.exists(target_dir):
+            # Try to extract repo name from the request
+            if "github.com" in original_request or "gitlab.com" in original_request:
+                # Find the URL pattern
+                import re
+                url_pattern = r'https?://[^\s]+\.git|git@[^\s]+\.git|https?://[^\s]+'
+                urls = re.findall(url_pattern, original_request)
+
+                if urls:
+                    url = urls[0]
+                    # Extract repo name from URL
+                    if "/" in url:
+                        repo_name = url.split("/")[-1]
+                        if repo_name.endswith(".git"):
+                            repo_name = repo_name[:-4]
+
+            # If we couldn't extract repo name, use a generic name
+            if not repo_name:
+                repo_name = "repository"
+
+            # Check for repo in workspace directory
+            workspace_path = self.workspace_path
+            repo_path = os.path.join(workspace_path, repo_name)
+
+            logger.info(f"Checking for repository at {repo_path}")
+
+            if os.path.exists(repo_path):
                 # Check if directory contains git files and code
-                has_git = os.path.exists(os.path.join(target_dir, ".git"))
-                has_code = any(f.endswith(('.py', '.js', '.java', '.cpp', '.c', '.h', '.html', '.css', '.ts', '.jsx', '.tsx'))
-                             for f in os.listdir(target_dir))
+                has_git = os.path.exists(os.path.join(repo_path, ".git"))
 
-                if has_git and has_code:
-                    logger.info(f"Target directory {target_dir} exists and contains code")
-                    return True, 0.9  # High confidence for existing valid repository
+                if has_git:
+                    logger.info(f"Found git repository at {repo_path}")
+                    # Check if directory contains code files
+                    code_extensions = ('.py', '.js', '.java', '.cpp', '.c', '.h', '.html', '.css', '.ts', '.jsx', '.tsx')
+                    has_code = False
+
+                    for root, _, files in os.walk(repo_path):
+                        if any(f.endswith(code_extensions) for f in files):
+                            has_code = True
+                            break
+
+                    if has_code:
+                        logger.info(f"Repository contains code files")
+                        return True, 0.9  # High confidence for existing valid repository
+
+                    logger.info(f"Repository exists but no code files were found")
 
         # Prepare completion check prompt
         completion_prompt = self.completion_check_prompt.format(

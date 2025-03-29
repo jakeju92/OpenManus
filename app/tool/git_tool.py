@@ -6,7 +6,9 @@ from typing import List, Optional
 from pydantic import Field
 
 from app.config import config
+from app.logger import logger
 from app.tool.base import BaseTool, CLIResult
+from app.workspace_manager import workspace_manager
 
 
 class GitTool(BaseTool):
@@ -16,7 +18,7 @@ Use this tool when you need to clone a repository, commit changes, push to remot
 This tool allows for standard git operations including clone, pull, commit, push, stash, and branch management.
 When cloning repositories, you need to provide a valid git URL and optionally a target directory.
 For other operations like commit, push, and stash, the current working directory must be a git repository.
-By default, repositories are cloned into the workspace root directory.
+By default, repositories are cloned into the current workspace directory.
 """
     parameters: dict = {
         "type": "object",
@@ -32,7 +34,7 @@ By default, repositories are cloned into the workspace root directory.
             },
             "target_dir": {
                 "type": "string",
-                "description": "Target directory for clone operation (optional, defaults to workspace root directory)",
+                "description": "Target directory for clone operation (optional, defaults to workspace directory)",
             },
             "commit_message": {
                 "type": "string",
@@ -60,13 +62,12 @@ By default, repositories are cloned into the workspace root directory.
     process: Optional[asyncio.subprocess.Process] = None
     current_path: str = os.getcwd()
     lock: asyncio.Lock = asyncio.Lock()
-    workspace_root: str = Field(default_factory=lambda: str(config.workspace_root))
+    workspace_root: str = Field(default="", description="Path to the workspace root")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # If workspace_root is not set, set it to current directory
-        if not hasattr(self, 'workspace_root') or not self.workspace_root:
-            self.workspace_root = os.getcwd()
+        # Set default workspace path from workspace manager
+        self.workspace_root = str(workspace_manager.current_workspace)
 
     async def execute(
         self,
@@ -93,9 +94,25 @@ By default, repositories are cloned into the workspace root directory.
         Returns:
             CLIResult: The result of the git operation
         """
-        # If cloning and no target directory specified, set current path to workspace root
-        if operation == "clone" and not target_dir:
+        # If cloning, prepare target directory in workspace
+        if operation == "clone":
+            # Set working directory to workspace root for clone operations
             await self.set_working_directory(self.workspace_root)
+
+            # If no target directory is specified, extract one from the repo URL
+            if not target_dir and repo_url:
+                # Extract repo name from URL
+                if "/" in repo_url:
+                    repo_name = repo_url.split("/")[-1]
+                    if repo_name.endswith(".git"):
+                        repo_name = repo_name[:-4]
+                else:
+                    repo_name = repo_url
+
+                # Use repo name as target directory
+                target_dir = repo_name
+
+            logger.info(f"Cloning repository to workspace: {self.workspace_root}/{target_dir}")
 
         cmd = await self._build_git_command(
             operation=operation,
@@ -112,6 +129,7 @@ By default, repositories are cloned into the workspace root directory.
 
         async with self.lock:
             try:
+                logger.info(f"Executing git command: {cmd} in {self.current_path}")
                 self.process = await asyncio.create_subprocess_shell(
                     cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -125,6 +143,7 @@ By default, repositories are cloned into the workspace root directory.
                     clone_dir = os.path.join(self.current_path, target_dir)
                     if os.path.isdir(clone_dir):
                         self.current_path = clone_dir
+                        logger.info(f"Changed working directory to: {self.current_path}")
 
                 result = CLIResult(
                     output=stdout.decode().strip(),
@@ -132,6 +151,7 @@ By default, repositories are cloned into the workspace root directory.
                 )
                 return result
             except Exception as e:
+                logger.error(f"Git operation failed: {str(e)}")
                 return CLIResult(error=str(e))
             finally:
                 self.process = None
